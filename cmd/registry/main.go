@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/registry/internal/api"
 	v0 "github.com/modelcontextprotocol/registry/internal/api/handlers/v0"
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/importer"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	"github.com/modelcontextprotocol/registry/internal/telemetry"
 )
 
@@ -48,36 +48,15 @@ func main() {
 
 	log.Printf("Starting MCP Registry Application v%s (commit: %s)", Version, GitCommit)
 
-	var (
-		registryService service.RegistryService
-		db              database.Database
-		err             error
-	)
-
 	// Initialize configuration
 	cfg := config.NewConfig()
 
-	// Create a context with timeout for PostgreSQL connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Initialize in-memory storage
+	st := storage.NewInMemoryStorage()
+	log.Println("Initialized in-memory storage")
 
-	// Connect to PostgreSQL
-	db, err = database.NewPostgreSQL(ctx, cfg.DatabaseURL)
-	if err != nil {
-		log.Printf("Failed to connect to PostgreSQL: %v", err)
-		return
-	}
-
-	// Store the PostgreSQL instance for later cleanup
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("Error closing PostgreSQL connection: %v", err)
-		} else {
-			log.Println("PostgreSQL connection closed successfully")
-		}
-	}()
-
-	registryService = service.NewRegistryService(db, cfg)
+	// Create registry service with in-memory storage
+	registryService := service.NewRegistryService(st, cfg)
 
 	// Import seed data if seed source is provided
 	if cfg.SeedFrom != "" {
@@ -85,7 +64,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		importerService := importer.NewService(registryService)
+		importerService := importer.NewService(registryService, st)
 		if err := importerService.ImportFromPath(ctx, cfg.SeedFrom); err != nil {
 			log.Printf("Failed to import seed data: %v", err)
 		}

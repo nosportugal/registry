@@ -22,8 +22,6 @@ cleanup() {
     echo "Cleanup completed"
 }
 
-go build -o ./bin/publisher ./cmd/publisher
-
 # Build the registry image with ko, forcing a rebuild to ensure latest code
 # Use Alpine for integration tests because health checks need wget (production uses static image)
 echo "Building registry image with ko..."

@@ -1,8 +1,20 @@
 # MCP Registry
 
-The MCP registry provides MCP clients with a list of MCP servers, like an app store for MCP servers.
+The MCP registry provides MCP clients with a read-only list of MCP servers, like an app store for MCP servers.
 
-[**📤 Publish my MCP server**](docs/modelcontextprotocol-io/quickstart.mdx) | [**⚡️ Live API docs**](https://registry.modelcontextprotocol.io/docs) | [**👀 Ecosystem vision**](docs/design/ecosystem-vision.md) | 📖 **[Full documentation](./docs)**
+[**⚡️ Live API docs**](https://registry.modelcontextprotocol.io/docs) | [**👀 Ecosystem vision**](docs/design/ecosystem-vision.md) | 📖 **[Full documentation](./docs)**
+
+## Overview
+
+This is a **read-only** MCP registry that serves server listings from a seed file. All server registration is managed externally (e.g., via GCP Apigee) and loaded via a seed file on startup.
+
+### Key Features
+
+- **Read-Only API**: Provides GET endpoints for discovering MCP servers
+- **Seed-Based**: All server data loaded from a seed file (supports local files or HTTP URLs)
+- **Full Reload**: Database is cleared and reloaded on each startup
+- **Validation**: Built-in server.json validation
+- **API Versioning**: Supports v0 and v0.1 API versions
 
 ## Development Status
 
@@ -45,9 +57,7 @@ make dev-compose
 
 This starts the registry at [`localhost:8080`](http://localhost:8080) with PostgreSQL. The database uses ephemeral storage and is reset each time you restart the containers, ensuring a clean state for development and testing.
 
-**Note:** The registry uses [ko](https://ko.build) to build container images. The `make dev-compose` command automatically builds the registry image with ko and loads it into your local Docker daemon before starting the services.
-
-By default, the registry seeds from the production API with a filtered subset of servers (to keep startup fast). This ensures your local environment mirrors production behavior and all seed data passes validation. For offline development you can seed from a file without validation with `MCP_REGISTRY_SEED_FROM=data/seed.json MCP_REGISTRY_ENABLE_REGISTRY_VALIDATION=false make dev-compose`.
+The registry loads MCP servers from `data/seed.json` on startup. You can modify this file to test different server configurations.
 
 The setup can be configured with environment variables in [docker-compose.yml](./docker-compose.yml) - see [.env.example](./.env.example) for a reference.
 
@@ -77,19 +87,27 @@ docker run -p 8080:8080 ghcr.io/modelcontextprotocol/registry:main-20250906-abc1
 
 </details>
 
-#### Publishing a server
+### Seed File Format
 
-To publish a server, we've built a simple CLI. You can use it with:
+The registry expects a JSON array of ServerJSON objects in `data/seed.json`:
 
-```bash
-# Build the latest CLI
-make publisher
-
-# Use it!
-./bin/mcp-publisher --help
+```json
+[
+  {
+    "name": "io.example/my-server",
+    "version": "1.0.0",
+    "description": "My MCP server",
+    "remotes": [
+      {
+        "type": "stdio",
+        "url": "npx -y @example/my-server"
+      }
+    ]
+  }
+]
 ```
 
-See [the publisher guide](./docs/modelcontextprotocol-io/quickstart.mdx) for more details.
+See the [server.json schema](pkg/model/server.go) for full specification.
 
 #### Other commands
 
@@ -110,15 +128,15 @@ For Claude and other AI tools: Always prefer make targets over custom commands w
 
 ```
 ├── cmd/                     # Application entry points
-│   └── publisher/           # Server publishing tool
-├── data/                    # Seed data
+│   └── registry/            # Registry server
+├── data/                    # Seed data files
 ├── deploy/                  # Deployment configuration (Pulumi)
 ├── docs/                    # Documentation
 ├── internal/                # Private application code
 │   ├── api/                 # HTTP handlers and routing
-│   ├── auth/                # Authentication (GitHub OAuth, JWT, namespace blocking)
 │   ├── config/              # Configuration management
 │   ├── database/            # Data persistence (PostgreSQL)
+│   ├── importer/            # Seed file import logic
 │   ├── service/             # Business logic
 │   ├── telemetry/           # Metrics and monitoring
 │   └── validators/          # Input validation
@@ -132,17 +150,23 @@ For Claude and other AI tools: Always prefer make targets over custom commands w
     └── validate-*.sh        # Schema validation tools
 ```
 
-### Authentication
+### API Endpoints
 
-Publishing supports multiple authentication methods:
-- **GitHub OAuth** - For publishing by logging into GitHub
-- **GitHub OIDC** - For publishing from GitHub Actions
-- **DNS verification** - For proving ownership of a domain and its subdomains
-- **HTTP verification** - For proving ownership of a domain
+The registry provides the following read-only endpoints:
 
-The registry validates namespace ownership when publishing. E.g. to publish...:
-- `io.github.domdomegg/my-cool-mcp` you must login to GitHub as `domdomegg`, or be in a GitHub Action on domdomegg's repos
-- `me.adamjones/my-cool-mcp` you must prove ownership of `adamjones.me` via DNS or HTTP challenge
+**Server Discovery:**
+- `GET /v0/servers` - List all servers with pagination
+- `GET /v0/servers/{name}/versions` - List versions of a specific server
+- `GET /v0/servers/{name}/versions/{version}` - Get specific server version
+
+**Utility:**
+- `GET /v0/health` - Health check
+- `GET /v0/ping` - Connectivity test
+- `GET /v0/version` - Version information
+- `POST /v0/validate` - Validate server.json without importing
+- `GET /docs` - OpenAPI documentation
+
+All endpoints are also available under `/v0.1` with the same functionality.
 
 ## Community Projects
 
