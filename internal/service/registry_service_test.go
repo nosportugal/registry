@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -42,7 +42,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 		},
 	}
 
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create existing servers using the new CreateServer method
@@ -115,7 +115,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			impl := service.(*registryServiceImpl)
 
-			err := impl.validateNoDuplicateRemoteURLs(ctx, nil, tt.serverDetail)
+			err := impl.validateNoDuplicateRemoteURLs(ctx, tt.serverDetail)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -129,7 +129,7 @@ func TestValidateNoDuplicateRemoteURLs(t *testing.T) {
 
 func TestGetServerByName(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create multiple versions of the same server
@@ -198,7 +198,7 @@ func TestGetServerByName(t *testing.T) {
 
 func TestGetServerByNameAndVersion(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	serverName := "com.example/versioned-server"
@@ -291,7 +291,7 @@ func TestGetServerByNameAndVersion(t *testing.T) {
 
 func TestGetAllVersionsByServerName(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	serverName := "com.example/multi-version-server"
@@ -387,7 +387,7 @@ func TestGetAllVersionsByServerName(t *testing.T) {
 
 func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	const concurrency = 100
@@ -441,210 +441,9 @@ func TestCreateServerConcurrentVersionsNoRace(t *testing.T) {
 	assert.Len(t, allVersions, concurrency, "should have all %d versions", concurrency)
 }
 
-func TestUpdateServer(t *testing.T) {
-	ctx := context.Background()
-	testDB := database.NewTestDB(t)
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
-
-	serverName := "com.example/update-test-server"
-	version := "1.0.0"
-
-	// Create initial server
-	_, err := service.CreateServer(ctx, &apiv0.ServerJSON{
-		Schema:      model.CurrentSchemaURL,
-		Name:        serverName,
-		Description: "Original description",
-		Version:     version,
-		Remotes: []model.Transport{
-			{Type: "streamable-http", URL: "https://original.example.com/mcp"},
-		},
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		name          string
-		serverName    string
-		version       string
-		updatedServer *apiv0.ServerJSON
-		newStatus     *string
-		expectError   bool
-		errorMsg      string
-		checkResult   func(*testing.T, *apiv0.ServerResponse)
-	}{
-		{
-			name:       "successful server update",
-			serverName: serverName,
-			version:    version,
-			updatedServer: &apiv0.ServerJSON{
-				Schema:      model.CurrentSchemaURL,
-				Name:        serverName,
-				Description: "Updated description",
-				Version:     version,
-				Remotes: []model.Transport{
-					{Type: "streamable-http", URL: "https://updated.example.com/mcp"},
-				},
-			},
-			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
-				t.Helper()
-				assert.Equal(t, "Updated description", result.Server.Description)
-				assert.Len(t, result.Server.Remotes, 1)
-				assert.Equal(t, "https://updated.example.com/mcp", result.Server.Remotes[0].URL)
-				assert.NotZero(t, result.Meta.Official.UpdatedAt)
-			},
-		},
-		{
-			name:       "update with status change",
-			serverName: serverName,
-			version:    version,
-			updatedServer: &apiv0.ServerJSON{
-				Schema:      model.CurrentSchemaURL,
-				Name:        serverName,
-				Description: "Updated with status change",
-				Version:     version,
-			},
-			newStatus:   stringPtr(string(model.StatusDeprecated)),
-			expectError: false,
-			checkResult: func(t *testing.T, result *apiv0.ServerResponse) {
-				t.Helper()
-				assert.Equal(t, "Updated with status change", result.Server.Description)
-				assert.Equal(t, model.StatusDeprecated, result.Meta.Official.Status)
-			},
-		},
-		{
-			name:       "update non-existent server",
-			serverName: "com.example/non-existent",
-			version:    "1.0.0",
-			updatedServer: &apiv0.ServerJSON{
-				Schema:      model.CurrentSchemaURL,
-				Name:        "com.example/non-existent",
-				Description: "Should fail",
-				Version:     "1.0.0",
-			},
-			expectError: true,
-			errorMsg:    "record not found",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := service.UpdateServer(ctx, tt.serverName, tt.version, tt.updatedServer, tt.newStatus)
-
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
-				}
-				assert.Nil(t, result)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, result)
-				if tt.checkResult != nil {
-					tt.checkResult(t, result)
-				}
-			}
-		})
-	}
-}
-
-func TestUpdateServer_SkipValidationForDeletedServers(t *testing.T) {
-	ctx := context.Background()
-	testDB := database.NewTestDB(t)
-	// Enable registry validation to test that it gets skipped for deleted servers
-	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: true})
-
-	serverName := "com.example/validation-skip-test"
-	version := "1.0.0"
-
-	// Create server with invalid package configuration (this would fail registry validation)
-	invalidServer := &apiv0.ServerJSON{
-		Schema:      model.CurrentSchemaURL,
-		Name:        serverName,
-		Description: "Server with invalid package for testing validation skip",
-		Version:     version,
-		Packages: []model.Package{
-			{
-				RegistryType: "npm",
-				Identifier:   "non-existent-package-for-validation-test",
-				Version:      "1.0.0",
-				Transport:    model.Transport{Type: "stdio"},
-			},
-		},
-	}
-
-	// Create initial server (validation disabled for creation in this test)
-	originalConfig := service.(*registryServiceImpl).cfg.EnableRegistryValidation
-	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err := service.CreateServer(ctx, invalidServer)
-	require.NoError(t, err, "failed to create server with validation disabled")
-	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
-
-	// First, set server to deleted status
-	deletedStatus := string(model.StatusDeleted)
-	_, err = service.UpdateServer(ctx, serverName, version, invalidServer, &deletedStatus)
-	require.NoError(t, err, "should be able to set server to deleted (validation should be skipped)")
-
-	// Verify server is now deleted
-	updatedServer, err := service.GetServerByNameAndVersion(ctx, serverName, version)
-	require.NoError(t, err)
-	assert.Equal(t, model.StatusDeleted, updatedServer.Meta.Official.Status)
-
-	// Now try to update a deleted server - validation should be skipped
-	updatedInvalidServer := &apiv0.ServerJSON{
-		Schema:      model.CurrentSchemaURL,
-		Name:        serverName,
-		Description: "Updated description for deleted server",
-		Version:     version,
-		Packages: []model.Package{
-			{
-				RegistryType: "npm",
-				Identifier:   "another-non-existent-package-for-validation-test",
-				Version:      "2.0.0",
-				Transport:    model.Transport{Type: "stdio"},
-			},
-		},
-	}
-
-	// This should succeed despite invalid packages because server is deleted
-	result, err := service.UpdateServer(ctx, serverName, version, updatedInvalidServer, nil)
-	assert.NoError(t, err, "updating deleted server should skip registry validation")
-	assert.NotNil(t, result)
-	assert.Equal(t, "Updated description for deleted server", result.Server.Description)
-	assert.Equal(t, model.StatusDeleted, result.Meta.Official.Status)
-
-	// Test updating a server being set to deleted status
-	activeServer := &apiv0.ServerJSON{
-		Schema:      model.CurrentSchemaURL,
-		Name:        "com.example/being-deleted-test",
-		Description: "Server being deleted",
-		Version:     "1.0.0",
-		Packages: []model.Package{
-			{
-				RegistryType: "npm",
-				Identifier:   "yet-another-non-existent-package",
-				Version:      "1.0.0",
-				Transport:    model.Transport{Type: "stdio"},
-			},
-		},
-	}
-
-	// Create active server (with validation disabled)
-	service.(*registryServiceImpl).cfg.EnableRegistryValidation = false
-	_, err = service.CreateServer(ctx, activeServer)
-	require.NoError(t, err)
-	service.(*registryServiceImpl).cfg.EnableRegistryValidation = originalConfig
-
-	// Update server and set to deleted in same operation - should skip validation
-	newDeletedStatus := string(model.StatusDeleted)
-	result2, err := service.UpdateServer(ctx, "com.example/being-deleted-test", "1.0.0", activeServer, &newDeletedStatus)
-	assert.NoError(t, err, "updating server being set to deleted should skip registry validation")
-	assert.NotNil(t, result2)
-	assert.Equal(t, model.StatusDeleted, result2.Meta.Official.Status)
-}
-
 func TestListServers(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create test servers
@@ -670,7 +469,7 @@ func TestListServers(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		filter        *database.ServerFilter
+		filter        *storage.ServerFilter
 		cursor        string
 		limit         int
 		expectedCount int
@@ -684,7 +483,7 @@ func TestListServers(t *testing.T) {
 		},
 		{
 			name: "filter by name",
-			filter: &database.ServerFilter{
+			filter: &storage.ServerFilter{
 				Name: stringPtr("com.example/server-alpha"),
 			},
 			limit:         10,
@@ -692,7 +491,7 @@ func TestListServers(t *testing.T) {
 		},
 		{
 			name: "filter by version",
-			filter: &database.ServerFilter{
+			filter: &storage.ServerFilter{
 				Version: stringPtr("1.0.0"),
 			},
 			limit:         10,
@@ -736,7 +535,7 @@ func TestListServers(t *testing.T) {
 
 func TestVersionComparison(t *testing.T) {
 	ctx := context.Background()
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	service := NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	serverName := "com.example/version-comparison-server"

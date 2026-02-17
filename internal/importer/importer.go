@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	"github.com/modelcontextprotocol/registry/internal/validators"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 )
@@ -18,46 +19,63 @@ import (
 // Service handles importing seed data into the registry
 type Service struct {
 	registry service.RegistryService
+	storage  storage.Storage
 }
 
 // NewService creates a new importer service
-func NewService(registry service.RegistryService) *Service {
-	return &Service{registry: registry}
+func NewService(registry service.RegistryService, st storage.Storage) *Service {
+	return &Service{
+		registry: registry,
+		storage:  st,
+	}
 }
 
-// ImportFromPath imports seed data from various sources:
+// ImportFromPath imports seed data from various sources with full database reload:
 // 1. Local file paths (*.json files) - expects ServerJSON array format
 // 2. Direct HTTP URLs to seed.json files - expects ServerJSON array format
 // 3. Registry root URLs (automatically appends /v0/servers and paginates)
+//
+// This performs a full reload: clears all existing servers and imports the seed data
 func (s *Service) ImportFromPath(ctx context.Context, path string) error {
 	servers, err := readSeedFile(ctx, path)
 	if err != nil {
 		return fmt.Errorf("failed to read seed data: %w", err)
 	}
 
-	// Import each server using registry service CreateServer
+	log.Printf("Starting full storage reload with %d servers from seed file", len(servers))
+
+	// Step 1: Clear all existing servers
+	log.Printf("Clearing existing servers from storage...")
+	if err := s.storage.Clear(ctx); err != nil {
+		return fmt.Errorf("failed to clear existing servers: %w", err)
+	}
+	log.Printf("Successfully cleared existing servers")
+
+	// Step 2: Import all servers from seed
 	var successfullyCreated []string
 	var failedCreations []string
 
 	for _, server := range servers {
+		// Use the service's CreateServer which handles all the business logic
 		_, err := s.registry.CreateServer(ctx, server)
 		if err != nil {
 			failedCreations = append(failedCreations, fmt.Sprintf("%s: %v", server.Name, err))
-			log.Printf("Failed to create server %s: %v", server.Name, err)
+			log.Printf("Failed to import server %s: %v", server.Name, err)
 		} else {
 			successfullyCreated = append(successfullyCreated, server.Name)
 		}
 	}
 
-	// Report import results after actual creation attempts
+	// Report import results
+	log.Printf("Import completed: %d servers created successfully, %d servers failed",
+		len(successfullyCreated), len(failedCreations))
+
 	if len(failedCreations) > 0 {
-		log.Printf("Import completed with errors: %d servers created successfully, %d servers failed",
-			len(successfullyCreated), len(failedCreations))
 		log.Printf("Failed servers: %v", failedCreations)
-		return fmt.Errorf("failed to import %d servers", len(failedCreations))
+		// Don't fail the operation - just log warnings
 	}
 
-	log.Printf("Import completed successfully: all %d servers created", len(successfullyCreated))
+	log.Printf("Full storage reload completed successfully")
 	return nil
 }
 

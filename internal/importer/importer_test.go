@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/importer"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -44,11 +44,11 @@ func TestImportService_LocalFile(t *testing.T) {
 	defer os.Remove(tempFile)
 
 	// Create registry service
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create importer service and test import
-	importerService := importer.NewService(registryService)
+	importerService := importer.NewService(registryService, testDB)
 	err = importerService.ImportFromPath(context.Background(), tempFile)
 	require.NoError(t, err)
 
@@ -90,11 +90,11 @@ func TestImportService_HTTPFile(t *testing.T) {
 	defer httpServer.Close()
 
 	// Create registry service
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create importer service and test import
-	importerService := importer.NewService(registryService)
+	importerService := importer.NewService(registryService, testDB)
 	err = importerService.ImportFromPath(context.Background(), httpServer.URL+"/seed.json")
 	require.NoError(t, err)
 
@@ -112,7 +112,7 @@ func TestImportService_RegistryPagination(t *testing.T) {
 	ctx := context.Background()
 
 	// Create registry service with test data
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
 
 	// Setup source registry with test data
@@ -159,11 +159,11 @@ func TestImportService_RegistryPagination(t *testing.T) {
 	defer httpServer.Close()
 
 	// Create target registry for import
-	targetDB := database.NewTestDB(t)
+	targetDB := storage.NewInMemoryStorage()
 	targetRegistryService := service.NewRegistryService(targetDB, &config.Config{EnableRegistryValidation: false})
 
 	// Create importer service and test registry import
-	importerService := importer.NewService(targetRegistryService)
+	importerService := importer.NewService(targetRegistryService, targetDB)
 	err := importerService.ImportFromPath(context.Background(), httpServer.URL+"/v0/servers")
 	require.NoError(t, err)
 
@@ -183,9 +183,9 @@ func TestImportService_RegistryPagination(t *testing.T) {
 
 func TestImportService_ErrorHandling(t *testing.T) {
 	// Create registry service
-	testDB := database.NewTestDB(t)
+	testDB := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(testDB, &config.Config{EnableRegistryValidation: false})
-	importerService := importer.NewService(registryService)
+	importerService := importer.NewService(registryService, testDB)
 
 	tests := []struct {
 		name        string

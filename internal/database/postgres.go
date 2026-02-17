@@ -436,111 +436,20 @@ func (db *PostgreSQL) CreateServer(ctx context.Context, tx pgx.Tx, serverJSON *a
 	return serverResponse, nil
 }
 
-// UpdateServer updates an existing server record with new server details
-func (db *PostgreSQL) UpdateServer(ctx context.Context, tx pgx.Tx, serverName, version string, serverJSON *apiv0.ServerJSON) (*apiv0.ServerResponse, error) {
+// DeleteAllServers deletes all servers from the database (for seed reloads)
+func (db *PostgreSQL) DeleteAllServers(ctx context.Context, tx pgx.Tx) error {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
 
-	// Validate inputs
-	if serverJSON == nil {
-		return nil, fmt.Errorf("serverJSON is required")
-	}
+	query := `DELETE FROM servers`
 
-	// Ensure the serverJSON matches the provided serverName and version
-	if serverJSON.Name != serverName || serverJSON.Version != version {
-		return nil, fmt.Errorf("%w: server name and version in JSON must match parameters", ErrInvalidInput)
-	}
-
-	// Marshal updated ServerJSON
-	valueJSON, err := json.Marshal(serverJSON)
+	_, err := db.getExecutor(tx).Exec(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal updated server: %w", err)
+		return fmt.Errorf("failed to delete all servers: %w", err)
 	}
 
-	// Update only the JSON data (keep existing metadata columns)
-	query := `
-		UPDATE servers
-		SET value = $1, updated_at = NOW()
-		WHERE server_name = $2 AND version = $3
-		RETURNING server_name, version, status, published_at, updated_at, is_latest
-	`
-
-	var name, vers, status string
-	var publishedAt, updatedAt time.Time
-	var isLatest bool
-
-	err = db.getExecutor(tx).QueryRow(ctx, query, valueJSON, serverName, version).Scan(&name, &vers, &status, &publishedAt, &updatedAt, &isLatest)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to update server: %w", err)
-	}
-
-	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
-		Server: *serverJSON,
-		Meta: apiv0.ResponseMeta{
-			Official: &apiv0.RegistryExtensions{
-				Status:      model.Status(status),
-				PublishedAt: publishedAt,
-				UpdatedAt:   updatedAt,
-				IsLatest:    isLatest,
-			},
-		},
-	}
-
-	return serverResponse, nil
-}
-
-// SetServerStatus updates the status of a specific server version
-func (db *PostgreSQL) SetServerStatus(ctx context.Context, tx pgx.Tx, serverName, version string, status string) (*apiv0.ServerResponse, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	// Update the status column
-	query := `
-		UPDATE servers
-		SET status = $1, updated_at = NOW()
-		WHERE server_name = $2 AND version = $3
-		RETURNING server_name, version, status, value, published_at, updated_at, is_latest
-	`
-
-	var name, vers, currentStatus string
-	var publishedAt, updatedAt time.Time
-	var isLatest bool
-	var valueJSON []byte
-
-	err := db.getExecutor(tx).QueryRow(ctx, query, status, serverName, version).Scan(&name, &vers, &currentStatus, &valueJSON, &publishedAt, &updatedAt, &isLatest)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to update server status: %w", err)
-	}
-
-	// Unmarshal the JSON data
-	var serverJSON apiv0.ServerJSON
-	if err := json.Unmarshal(valueJSON, &serverJSON); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal server JSON: %w", err)
-	}
-
-	// Return the updated ServerResponse
-	serverResponse := &apiv0.ServerResponse{
-		Server: serverJSON,
-		Meta: apiv0.ResponseMeta{
-			Official: &apiv0.RegistryExtensions{
-				Status:      model.Status(currentStatus),
-				PublishedAt: publishedAt,
-				UpdatedAt:   updatedAt,
-				IsLatest:    isLatest,
-			},
-		},
-	}
-
-	return serverResponse, nil
+	return nil
 }
 
 // InTransaction executes a function within a database transaction
