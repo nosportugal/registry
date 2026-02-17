@@ -12,8 +12,8 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	v0 "github.com/modelcontextprotocol/registry/internal/api/handlers/v0"
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +22,7 @@ import (
 
 func TestListServersEndpoint(t *testing.T) {
 	ctx := context.Background()
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 
 	// Setup test data
 	_, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
@@ -116,7 +116,7 @@ func TestListServersEndpoint(t *testing.T) {
 
 func TestGetLatestServerVersionEndpoint(t *testing.T) {
 	ctx := context.Background()
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 
 	// Setup test data
 	_, err := registryService.CreateServer(ctx, &apiv0.ServerJSON{
@@ -177,7 +177,7 @@ func TestGetLatestServerVersionEndpoint(t *testing.T) {
 
 func TestGetServerVersionEndpoint(t *testing.T) {
 	ctx := context.Background()
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 
 	serverName := "com.example/version-server"
 
@@ -302,7 +302,7 @@ func TestGetServerVersionEndpoint(t *testing.T) {
 
 func TestGetAllVersionsEndpoint(t *testing.T) {
 	ctx := context.Background()
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 
 	serverName := "com.example/multi-version-server"
 
@@ -394,7 +394,7 @@ func TestGetAllVersionsEndpoint(t *testing.T) {
 
 func TestServersEndpointEdgeCases(t *testing.T) {
 	ctx := context.Background()
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 
 	// Setup test data with edge case names that comply with constraints
 	specialServers := []struct {

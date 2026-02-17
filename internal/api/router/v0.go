@@ -5,7 +5,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	v0 "github.com/modelcontextprotocol/registry/internal/api/handlers/v0"
-	v0auth "github.com/modelcontextprotocol/registry/internal/api/handlers/v0/auth"
 	"github.com/modelcontextprotocol/registry/internal/config"
 	"github.com/modelcontextprotocol/registry/internal/service"
 	"github.com/modelcontextprotocol/registry/internal/telemetry"
@@ -18,9 +17,6 @@ func RegisterV0Routes(
 	v0.RegisterPingEndpoint(api, "/v0")
 	v0.RegisterVersionEndpoint(api, "/v0", versionInfo)
 	v0.RegisterServersEndpoints(api, "/v0", registry)
-	v0.RegisterEditEndpoints(api, "/v0", registry, cfg)
-	v0auth.RegisterAuthEndpoints(api, "/v0", cfg)
-	v0.RegisterPublishEndpoint(api, "/v0", registry, cfg)
 	v0.RegisterValidateEndpoint(api, "/v0")
 }
 
@@ -31,8 +27,5 @@ func RegisterV0_1Routes(
 	v0.RegisterPingEndpoint(api, "/v0.1")
 	v0.RegisterVersionEndpoint(api, "/v0.1", versionInfo)
 	v0.RegisterServersEndpoints(api, "/v0.1", registry)
-	v0.RegisterEditEndpoints(api, "/v0.1", registry, cfg)
-	v0auth.RegisterAuthEndpoints(api, "/v0.1", cfg)
-	v0.RegisterPublishEndpoint(api, "/v0.1", registry, cfg)
 	v0.RegisterValidateEndpoint(api, "/v0.1")
 }

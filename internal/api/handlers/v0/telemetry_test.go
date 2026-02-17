@@ -14,15 +14,15 @@ import (
 	v0 "github.com/modelcontextprotocol/registry/internal/api/handlers/v0"
 	"github.com/modelcontextprotocol/registry/internal/api/router"
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	"github.com/modelcontextprotocol/registry/internal/telemetry"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 )
 
 func TestPrometheusHandler(t *testing.T) {
-	registryService := service.NewRegistryService(database.NewTestDB(t), config.NewConfig())
+	registryService := service.NewRegistryService(storage.NewInMemoryStorage(), config.NewConfig())
 	server, err := registryService.CreateServer(context.Background(), &apiv0.ServerJSON{
 		Schema:      model.CurrentSchemaURL,
 		Name:        "io.github.example/test-server",

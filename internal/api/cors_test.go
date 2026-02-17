@@ -14,8 +14,8 @@ import (
 	"github.com/modelcontextprotocol/registry/internal/api"
 	v0 "github.com/modelcontextprotocol/registry/internal/api/handlers/v0"
 	"github.com/modelcontextprotocol/registry/internal/config"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	"github.com/modelcontextprotocol/registry/internal/telemetry"
 )
 
@@ -29,7 +29,7 @@ func TestCORSHeaders(t *testing.T) {
 	cfg.JWTPrivateKey = hex.EncodeToString(testSeed)
 
 	// Create test services
-	db := database.NewTestDB(t)
+	db := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(db, cfg)
 
 	shutdownTelemetry, metrics, err := telemetry.InitMetrics("test")
@@ -143,7 +143,7 @@ func TestCORSHeaderValues(t *testing.T) {
 	cfg.JWTPrivateKey = hex.EncodeToString(testSeed)
 
 	// Create test services
-	db := database.NewTestDB(t)
+	db := storage.NewInMemoryStorage()
 	registryService := service.NewRegistryService(db, cfg)
 
 	shutdownTelemetry, metrics, err := telemetry.InitMetrics("test")

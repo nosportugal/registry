@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/modelcontextprotocol/registry/internal/database"
 	"github.com/modelcontextprotocol/registry/internal/service"
+	"github.com/modelcontextprotocol/registry/internal/storage"
 	apiv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 )
 
@@ -53,7 +53,7 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 		Tags:        []string{"servers"},
 	}, func(ctx context.Context, input *ListServersInput) (*Response[apiv0.ServerListResponse], error) {
 		// Build filter from input parameters
-		filter := &database.ServerFilter{}
+		filter := &storage.ServerFilter{}
 
 		// Parse updated_since parameter
 		if input.UpdatedSince != "" {
@@ -135,7 +135,7 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 		}
 
 		if err != nil {
-			if err.Error() == errRecordNotFound || errors.Is(err, database.ErrNotFound) {
+			if err.Error() == errRecordNotFound || errors.Is(err, storage.ErrNotFound) {
 				return nil, huma.Error404NotFound("Server not found")
 			}
 			return nil, huma.Error500InternalServerError("Failed to get server details", err)
@@ -164,7 +164,7 @@ func RegisterServersEndpoints(api huma.API, pathPrefix string, registry service.
 		// Get all versions for this server
 		servers, err := registry.GetAllVersionsByServerName(ctx, serverName)
 		if err != nil {
-			if err.Error() == errRecordNotFound || errors.Is(err, database.ErrNotFound) {
+			if err.Error() == errRecordNotFound || errors.Is(err, storage.ErrNotFound) {
 				return nil, huma.Error404NotFound("Server not found")
 			}
 			return nil, huma.Error500InternalServerError("Failed to get server versions", err)
